@@ -1,0 +1,18 @@
+name: house-prices-env
+channels:
+  - conda-forge
+dependencies:
+  - r-base
+  - r-missforest
+  - r-ggplot2
+  - r-dplyr
+  - r-caret
+  - r-glmnet
+  - r-splines
+  - r-gam
+  - r-mass
+  - r-rpart
+  - r-rpart.plot
+  - r-gbm
+  - r-knitr
+  - r-rmarkdown
