@@ -101,5 +101,5 @@ House-Prices/
 
 ## Citation
 
-Anna Montoya, DataCanary. (2016). House Prices - Advanced Regression Techniques. Kaggle. 
+Anna Montoya, DataCanary. (2016). House Prices - Advanced Regression Techniques. Kaggle. <br/>
 https://kaggle.com/competitions/house-prices-advanced-regression-techniques
