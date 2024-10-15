@@ -7,7 +7,7 @@ This repository contains my work for the Kaggle competition "[House Prices: Adva
 
 1. [Competition Overview](#competition-overview)
 2. [Project Structure](#project-structure)
-3. [Methods Used](#methods)
+3. [Methods](#methods)
 4. [Feature Engineering](#feature-engineering)
 5. [Modeling Techniques](#modeling-techniques)
 6. [Results](#results)
@@ -98,3 +98,8 @@ House-Prices/
    - **Random Forest**: Built with `randomForest` package to capture complex non-linear relationships.
    - **Gradient Boosting**: Implemented using `gbm` to enhance predictive power with boosting techniques.
 4. **Generalized Additive Models (GAM)**: Used the `gam` library to fit smooth terms for continuous predictors.
+
+## Citation
+
+Anna Montoya, DataCanary. (2016). House Prices - Advanced Regression Techniques. Kaggle. 
+https://kaggle.com/competitions/house-prices-advanced-regression-techniques
