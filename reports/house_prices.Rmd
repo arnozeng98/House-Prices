@@ -1,582 +1,120 @@
 ---
 title: "House Prices"
-author: "Lingsong Zeng"
-date: "2020/4/20"
-output: pdf_document
+subtitle: "Advanced Regression Techniques"
+author: "Arno Zeng"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+  github_document:
+    toc: true
+  pdf_document:
+    toc: true
 ---
 
-```{=tex}
-\newpage
-\tableofcontents
-\newpage
-```
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Introduction
-
-## Competition Description
-
-![](housesbanner.png)
-
-Ask a home buyer to describe their dream house, and they probably won't begin with the height of the basement ceiling or the proximity to an east-west railroad. But this playground competition's dataset proves that much more influences price negotiations than the number of bedrooms or a white-picket fence.
-
-With 79 explanatory variables describing (almost) every aspect of residential homes in Ames, Iowa, this competition to predict the final price of each home.
-
-## Practice Skills
-
-1.  Creative feature engineering\
-2.  Advanced regression techniques like random forest and gradient boosting
-
-## Acknowledgments
-
-The Ames Housing dataset was compiled by Dean De Cock for use in data science education. It's an incredible alternative for data scientists looking for a modernized and expanded version of the often cited Boston Housing dataset.
-
-## Goal
-
-To predict the sales price for each house. For each Id in the test set, predict the value of the SalePrice variable.
-
-## Data description
-
--   train.csv - the training set
--   test.csv - the test set
--   data_description.txt - full description of each column, originally prepared by Dean De Cock but lightly edited to match the column names used here
--   sample_submission.csv - a benchmark submission from a linear regression on year and month of sale, lot square footage, and number of bedrooms
-
-<https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data>
-
-## Grade
-
-![](score2.png)
-
-![](score1.png)
-
-# Preprocessing
-
-## Import data
-
-```{r, warning=FALSE, message=FALSE}
-## Read data
-train <- read.csv("train.csv", header = TRUE, stringsAsFactors = TRUE)
-test  <- read.csv("test.csv",  header = TRUE, stringsAsFactors = TRUE)
-
-## Read Id
-Id <- test$Id
-
-## Remove Id from data
-train <- train[!(names(train) %in% c("Id"))]
-test  <- test[!(names(test) %in% c("Id"))]
+```{r load packages}
+library(readr) # read_csv
+library(dplyr) # filter, mutate, select, ...
+library(tidyr) # gather
 ```
 
-## Data cleaning
+## Preprocessing
 
-### Missing value
+### Import data
+
+```{r read data}
+train <- read_csv("../data/raw/train.csv", col_names = TRUE)
+test  <- read_csv("../data/raw/test.csv" , col_names = TRUE)
+```
 
 ```{r}
-## Colums that do not have NA
-train.nona <- apply(train, 2, function(value) sum(is.na(value))==0)
-test.nona  <- apply(test,  2, function(value) sum(is.na(value))==0)
-
-## Make a new data.frame which only contain columns with NA
-train.na <- train[!train.nona]
-
-## Present the structure of train.na
-str(train.na)
+head(train)
 ```
-
-According to the data description, here are some variable with NA means None but not missing value, here we can correct that.
 
 ```{r}
-## Build a vector to contain predictors needs to be correct
-variables <- c(
-  "Alley"       , "BsmtQual"    , "BsmtCond"    , "BsmtExposure", 
-  "BsmtFinType1", "BsmtFinType2", "FireplaceQu" , "GarageType"  , 
-  "GarageFinish", "GarageQual"  , "GarageCond"  , "PoolQC"      , 
-  "Fence"       ,  "MiscFeature"
-)
-
-## Replace NA by "None" for each predictor marked in variables
-for (var in variables)
-{
-  # Add "None" as a level to predictor
-  levels(train[[var]]) <- c(levels(train[[var]]), "None")
-  levels(test[[var]]) <- c(levels(test[[var]]), "None")
-  
-  # Replace NA by "None"
-  train[[var]][is.na(train[[var]])] <- "None"
-  test[[var]][is.na(test[[var]])] <- "None"
-}
+head(test)
 ```
 
-Now we use the missForest package to impute missing values. missForest runs a random forests on each variable using the observed part and predicts the na values.
+It is observed that the train and test datasets differ by one column, `SalePrice`, which is the target variable we aim to predict.
+
+Based on our initial inspection of the imported train and test datasets, we observe that many columns are categorized as strings. At this point, it is necessary to compare the descriptions of these data to determine whether converting the string variables into factors is appropriate.
+
+By comparing the descriptions provided on [kaggle](https://www.kaggle.com/competitions/house-prices-advanced-regression-techniques/data), also in `../data/raw/data_description.txt` for each column, we identified that all columns with string values should indeed be treated as factors. Additionally, we discovered that certain columns marked as double, such as `MSSubClass`, `OverallQual`, and `OverallCond`, should actually be considered as factors based on the nature of their data.
+
+Additionally, the Id column is not required for our analysis, so we will remove it from both the train and test datasets.
+
+```{r correcting data type}
+train <- train |>
+    mutate(across(c(MSSubClass, OverallQual, OverallCond), as.factor)) |> 
+    mutate(across(where(is.character), as.factor)) |> 
+    select(-Id) # remove Id
+
+test <- test |>
+    mutate(across(c(MSSubClass, OverallQual, OverallCond), as.factor)) |> 
+    mutate(across(where(is.character), as.factor)) |> 
+    select(-Id) # remove Id
+```
+
+Let's take another look at our data to ensure that we have made the necessary adjustments and understand its structure before proceeding further.
 
 ```{r}
-## Load library
-library(missForest)
-
-## Impute missing values
-train.mis <- missForest(train, maxiter = 5, ntree = 250)
-test.mis <- missForest(test, maxiter = 5, ntree = 250)
-train <- train.mis$ximp
-test <- test.mis$ximp
+head(train)
 ```
-
-\newpage
-
-## Data Visualization
 
 ```{r}
-## Load library
-library(ggplot2)
-library(dplyr)
-
-## Set data for histogram
-data <- train$SalePrice
-options(scipen = 800000)
-
-## Draw histogram
-tibble(data)                               %>%
-ggplot(aes(data))                           +
-  geom_histogram(aes(fill=..x..))           +
-  scale_fill_viridis_c(name = "SalePrice")  +
-  geom_vline(
-    aes(xintercept = mean(data))            ,
-    linetype = 1, size = 1                  ,
-    color = "#E69F00"
-  )                                         +
-  labs(
-    x = "SalePrice", y = "Frequency"        ,
-    title = "SalePrice Distribution"        ,
-    caption = "Mean = 180921.2"
-  )
+head(test)
 ```
 
-From the histogram above we can know that the SalePrice of most house distributed between 100000 - 300000. We can Further check relationships between variables and SalePrice.
+At this point, the data import process is complete, and we are ready to proceed with the next steps.
 
-```{r,fig.width = 9, fig.height = 6}
-## Kernel density plots
-kit <- train[,c("KitchenQual", "SalePrice")]
-lot <- train[,c("LotConfig", "SalePrice")]
-sal <- train[,c("SaleType", "SalePrice")]
+### Fill NA
 
-## SalePrice - KitchenQual
-kit.plt <- ggplot(kit, aes(x = SalePrice, fill = KitchenQual)) +
-  geom_density(alpha = 0.4) + 
-  labs(title = "SalePrice distribution by KitchenQual")
+```{r NA info}
+# na info for train data set
+train_na_info <- train |> 
+  select(where(~ any(is.na(.)))) |> # select cols with na
+  summarise_all(~ class(.)) |>      # mark corresponding data type
+  pivot_longer(                     # formatting
+    cols = everything(), 
+    names_to = "ColumnName", 
+    values_to = "DataType"
+  ) |> 
+  mutate(Source = "train")          # mark source
 
-## SalePrice - LotConfig
-lot.plt <- ggplot(lot, aes(x = SalePrice, fill = LotConfig)) +
-  geom_density(alpha = 0.4) + 
-  labs(title = "SalePrice distribution by LotConfig")
+# na info for test data set
+test_na_info <- test |> 
+  select(where(~ any(is.na(.)))) |> # select cols with na
+  summarise_all(~ class(.)) |>      # mark corresponding data type
+  pivot_longer(                     # formatting
+    cols = everything(), 
+    names_to = "ColumnName", 
+    values_to = "DataType"
+  ) |> 
+  mutate(Source = "test")           # mark source
 
-## SalePrice - SaleType
-sal.plt <- ggplot(sal, aes(x = SalePrice, fill = SaleType)) +
-  geom_density(alpha = 0.4) + 
-  labs(title = "SalePrice distribution by SaleType")
+# combined na info for train and test
+combined_na_info <- full_join(
+    train_na_info, test_na_info, 
+    by = c("ColumnName", "DataType")
+  ) |>
+  mutate(Source = case_when(
+    !is.na(Source.x) & !is.na(Source.y) ~ "both",  # if this col has na in both
+    !is.na(Source.x) ~ "train",                    # train and test, we mark 
+    !is.na(Source.y) ~ "test"                      # the source as "both"
+  )) |>
+  select(ColumnName, DataType, Source) |>  # drop col Source.x and Source.y
+  distinct()                               # make sure no duplicated rows
 
-## Plot
-kit.plt ; lot.plt; sal.plt
+# output
+combined_na_info
 ```
 
-\newpage
+The above code provides us with a dataframe that contains all columns with missing values (NA). If a column contains NA values in both the train and test datasets, we label its `Source` as "both."
 
-From these three density graphs presented above, we can see that the KitchenQual has pretty much influnce on SalePrice since there is an overt distinction performance on SalePrice between different level of KitchenQual.
+For different variables, we will apply various methods to impute the missing values based on their attributes and data formats. This approach ensures that the imputation method is appropriate for the type and nature of the data in each column.
 
-On the contrary, the LotConfig almost does not affect SalePrice due to different level of LotConfig distributed similar on SalePrice.
-
-For the thrid graph, it seems SaleType also has some effect on SalePrice, and we can comprehend further by checking its box plot.
-
-```{r}
-## Boxplots
-ggplot(sal, aes(x = SaleType, y = SalePrice, fill = SaleType)) +
-  geom_boxplot() + labs(title = "SalePrice distribution by SaleType")
-```
-
-From the box plot presented above, we can clearly see that type "Con" has an obvious higher SalePrice than other SaleType.
-
-# Models
-
-## KNN
-
-```{r}
-## Load library
-library(caret)
-
-## Set a seed
-set.seed(123)
-
-## Set up grid and trControl
-grid_knn <- expand.grid(.k = seq(2, 20, by = 1))
-tr.control <- trainControl(method = "cv")
-
-## Fit a knn model
-fit.knn <- train(
-  SalePrice ~ .          , 
-  data = train           , 
-  method = "knn"         , 
-  trControl = tr.control ,
-  tuneGrid = grid_knn    ,
-  preProcess = c("center", "scale")
-)
-
-## Present the model
-fit.knn
-
-## Visualize model
-plot(fit.knn)
-
-## Make prediction
-pred.knn <- predict(fit.knn, newdata = test)
-
-## Save prediction as knn.csv
-write.csv(
-  data.frame(Id, SalePrice = pred.knn),
-  file = "knn.csv",
-  row.names = FALSE
-)
-```
-
-![](knn.png)
-
-\newpage
-
-## Linear Regression
-
-### Simple Linear Regression
-
-```{r}
-## Fit a linear regression model
-fit.lm <- lm(SalePrice ~ ., data = train)
-
-## Visialize model
-par(mfrow = c(2,2))
-plot(fit.lm)
-
-## Make prediction
-pred.lm <- predict(fit.lm, newdata = test)
-
-## Save prediction as lm.csv
-write.csv(
-  data.frame(Id, SalePrice = pred.lm),
-  file = "lm.csv",
-  row.names = FALSE
-)
-```
-
-![](lm.png)
-
-### Linear Regression with Stewise Selection
-
-**Forward**
-
-```{r, eval=FALSE}
-## Define empty and full
-empty <- lm(log(SalePrice) ~ 1, data = train) 
-full  <- lm(log(SalePrice) ~ ., data = train)
-
-## Fit a forward model
-fit.forward <- step(
-  empty, 
-  scope = list(lower = empty, upper = full), 
-  direction = "forward"
-)
-
-## Make prediction
-pred.forward <- predict(fit.forward, newdata = test)
-
-## Save prediction as forward.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.forward)),
-  file = "forward.csv",
-  row.names = FALSE
-)
-```
-
-![](forward.png)
-
-**Backward**
-
-```{r, eval=FALSE}
-## Fit a backward model
-fit.backward <- step(
-  full, 
-  scope = list(lower = full, upper = empty), 
-  direction = "backward"
-)
-
-## Make prediction
-pred.backward <- predict(fit.backward, newdata = test)
-
-## Save prediction as forward.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.backward)),
-  file = "backward.csv",
-  row.names = FALSE
-)
-```
-
-![](backward.png)
-
-## Shrinkage Methods
-
-### Ridge Regression
-
-```{r, fig.width = 9, fig.height = 5}
-## Load library
-library(glmnet)
-
-## Set a seed
-set.seed(123)
-
-## Define x and y and lambdas
-train.x <- train[,names(train) != "SalePrice"]
-x <- data.matrix(train.x)
-y <- log(train$SalePrice)
-lambdas <- 10^seq(2, -3, by = -.1)
-
-## Fit a ridge regression model
-fit.ridge <- glmnet(
-  x, 
-  y, 
-  alpha = 0,
-  family = 'gaussian',
-  lambda = lambdas
-)
-cv.ridge <- cv.glmnet(x, y, alpha = 0, nfold = 20, lambda = lambdas)
-
-## Visualize model
-plot(cv.ridge)
-
-## Make prediction
-pred.ridge <- as.vector(predict(
-  fit.ridge, 
-  s = cv.ridge$lambda.min, 
-  newx = data.matrix(test)
-))
-
-## Save prediction as ridge.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.ridge)),
-  file = "ridge.csv",
-  row.names = FALSE
-)
-```
-
-![](ridge.png)
-
-### Lasso
-
-```{r, fig.width = 9, fig.height = 5}
-## Fit a Lasso model
-fit.lasso <- cv.glmnet(x, y, alpha = 1)
-cv.lasso <- cv.glmnet(x, y, alpha = 1, nfolds = 10)
-
-## Visualize model
-plot(cv.lasso)
-
-## Make prediction
-pred.lasso <- as.vector(predict(
-  fit.lasso, 
-  s = cv.lasso$lambda.min,
-  newx = data.matrix(test)
-))
-
-## Save prediction as lasso.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.lasso)),
-  file = "lasso.csv",
-  row.names = FALSE
-)
-```
-
-![](lasso.png)
-
-## Generalized Additive Models
-
-```{r}
-## Load libraries
-library(splines)
-library(gam)
-
-## Fit a gam model
-fit.gam <- gam(
-  log(SalePrice) ~ 
-  s(MSSubClass   , df = 5) + s(LotArea      , df = 5) + 
-  s(OverallQual  , df = 5) + s(OverallCond  , df = 5) +
-  s(YearBuilt    , df = 5) + s(YearRemodAdd , df = 3) + 
-  s(MasVnrArea   , df = 5) + s(BsmtFinSF1   , df = 5) + 
-  s(BsmtFinSF2   , df = 5) + s(BsmtUnfSF    , df = 5) + 
-  s(X1stFlrSF    , df = 5) + s(X2ndFlrSF    , df = 5) + 
-  s(BsmtFullBath , df = 1) + s(FullBath     , df = 1) + 
-  s(BedroomAbvGr , df = 5) + s(KitchenAbvGr , df = 4) + 
-  s(TotRmsAbvGrd , df = 1) + s(Fireplaces   , df = 2) + 
-  s(GarageCars   , df = 2) + s(GarageArea   , df = 2) + 
-  s(WoodDeckSF   , df = 2) + s(ScreenPorch  , df = 4) + 
-  s(PoolArea     , df = 5) + s(MoSold       , df = 1) ,
-  data = train
-)
-
-## Make prediction
-pred.gam <- predict(fit.gam, newdata = test)
-
-## Save prediction as gam.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.gam)),
-  file = "gam.csv",
-  row.names = FALSE
-)
-```
-
-![](gam.png)
-
-## Regression Trees
-
-```{r, fig.width = 9, fig.height = 5}
-## Load libraries
-library(MASS)
-library(rpart)
-library(rpart.plot)
-
-## Fit a tree model
-fit.tree <- rpart(log(SalePrice) ~ ., data = train)
-
-## Visualize model
-rpart.plot(fit.tree)
-
-## Make prediction
-pred.tree <- predict(fit.tree, test)
-
-## Save prediction as tree.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.tree)),
-  file = "tree.csv",
-  row.names = FALSE
-)
-```
-
-![](tree.png)
-
-## Bagging
-
-```{r}
-## Set a new trControl
-tr.control <- trainControl(
-  method = "repeatedcv" , 
-  number = 10           ,
-  repeats = 10
-)
-
-## Fit a bag model
-fit.bag <- train(
-  log(SalePrice) ~ .     , 
-  data = train           , 
-  method = "treebag"     ,
-  trControl = tr.control , 
-  control = rpart.control(minsplit = 2, cp = 0)
-)
-
-## Check model
-fit.bag
-
-## Make prediction
-pred.bag <- predict(fit.bag, newdata = test)
-
-## Save prediction as bag.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.bag)),
-  file = "bag.csv",
-  row.names = FALSE
-)
-```
-
-![](bag.png)
-
-## Random Forest
-
-```{r}
-## Set up grid for random forest
-grid_rf = expand.grid(.mtry = c(2, 4, 8, 16, 32, 64))
-
-## Fit a random forest model
-fit.rf <- train(
-  log(SalePrice) ~ .     , 
-  data = train           , 
-  method = 'rf'          ,
-  trControl = tr.control ,
-  tuneGrid = grid_rf
-)
-
-## Check model
-fit.rf
-
-## Visualize model
-plot(fit.rf)
-
-## Make prediction
-pred.rf <- predict(fit.rf, newdata = test)
-
-## Save prediction as rf.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.rf)),
-  file = "rf.csv",
-  row.names = FALSE
-)
-```
-
-![](rf.png)
-
-## Boosting model
-
-```{r}
-## Load library
-library(gbm)
-set.seed(123)
-
-## Fit a model
-fit.gbm <- gbm(
-  log(SalePrice) ~ .        , 
-  data = train              , 
-  distribution = "gaussian" , 
-  interaction.depth = 4     ,
-  shrinkage = 0.01          , 
-  n.tree = 5000             , 
-  cv.folds = 20
-)
-
-## Make prediction
-pred.gbm <- predict(
-  fit.gbm, 
-  newdata = test, 
-  n.trees = which.min(fit.gbm$cv.error)
-)
-
-## Save prediction as gbm.csv
-write.csv(
-  data.frame(Id, SalePrice = exp(pred.gbm)),
-  file = "gbm.csv",
-  row.names = FALSE
-)
-```
-
-![](gbm.png)
-
-# Prediction
-
-## Ensemble
-
-For the final prediction, I choose 3 models with highest grades to build an ensemble model. Since this is a regression problem, I decided to use the weighted average of their prediction as the final prediction.
-
-```{r}
-## Make prediction
-prediction <- ((exp(pred.gbm)*7) + (exp(pred.gam)*2) + (exp(pred.lasso)*1))/10
-
-## Save prediction as prediction.csv
-write.csv(
-  data.frame(Id, SalePrice = prediction),
-  file = "prediction.csv",
-  row.names = FALSE
-)
-```
-
-![](ensemble.png)
+### Outlier Detection and Handling
