@@ -7,11 +7,12 @@ This repository contains my work for the Kaggle competition "[House Prices: Adva
 
 1. [Competition Overview](#competition-overview)
 2. [Project Structure](#project-structure)
-3. [Methods Used](#methods-used)
+3. [Methods Used](#methods)
 4. [Feature Engineering](#feature-engineering)
 5. [Modeling Techniques](#modeling-techniques)
 6. [Results](#results)
 7. [How to Run](#how-to-run)
+8. [Citation](#citation)
 
 
 ## Competition Overview
